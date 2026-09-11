@@ -1,30 +1,31 @@
 import decapCMSLoginScript from './decap-cms-login-script';
 
-addEventListener('fetch', (event: any) => {
-  event.respondWith(handle(event.request));
-});
-
-// Inserted as secrets to the worker
-// @ts-ignore
-const client_id = CLIENT_ID;
-// @ts-ignore
-const client_secret = CLIENT_SECRET;
-
-async function handle(request: Request) {
-  const { pathname, searchParams: params } = new URL(request.url);
-
-  switch (pathname) {
-    case '/auth':
-      return redirectToAuthFlow();
-
-    case '/callback':
-      return await fetchAccessToken(params);
-  }
-
-  return new Response();
+interface Env {
+  CLIENT_ID: string;
+  CLIENT_SECRET: string;
 }
 
-async function fetchAccessToken(requestParams: URLSearchParams) {
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const { pathname, searchParams: params } = new URL(request.url);
+
+    switch (pathname) {
+      case '/auth':
+        return redirectToAuthFlow(env);
+
+      case '/callback':
+        return await fetchAccessToken(params, env);
+
+      default:
+        return new Response();
+    }
+  },
+};
+
+async function fetchAccessToken(
+  requestParams: URLSearchParams,
+  env: Env
+): Promise<Response> {
   try {
     const code = requestParams.get('code');
 
@@ -37,7 +38,11 @@ async function fetchAccessToken(requestParams: URLSearchParams) {
           'user-agent': 'decap-cms-github-oauth-api-cloudflare',
           accept: 'application/json',
         },
-        body: JSON.stringify({ client_id, client_secret, code }),
+        body: JSON.stringify({
+          client_id: env.CLIENT_ID,
+          client_secret: env.CLIENT_SECRET,
+          code,
+        }),
       }
     ).then((res) => res.json());
 
@@ -49,7 +54,7 @@ async function fetchAccessToken(requestParams: URLSearchParams) {
         'Content-Type': 'text/html;charset=UTF-8',
       },
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
     return new Response(err.message, {
       status: 500,
@@ -57,9 +62,9 @@ async function fetchAccessToken(requestParams: URLSearchParams) {
   }
 }
 
-function redirectToAuthFlow() {
+function redirectToAuthFlow(env: Env): Response {
   return Response.redirect(
-    `https://github.com/login/oauth/authorize?client_id=${client_id}&scope=repo,user`,
+    `https://github.com/login/oauth/authorize?client_id=${env.CLIENT_ID}&scope=repo,user`,
     302
   );
 }
