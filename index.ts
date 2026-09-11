@@ -17,7 +17,9 @@ export default {
         return await fetchAccessToken(params, env);
 
       default:
-        return new Response();
+        return new Response('Not Found', {
+          status: 404,
+        });
     }
   },
 };
@@ -28,6 +30,12 @@ async function fetchAccessToken(
 ): Promise<Response> {
   try {
     const code = requestParams.get('code');
+
+    if (!code) {
+      return new Response('Missing authorization code', {
+        status: 400,
+      });
+    }
 
     const response = await fetch(
       'https://github.com/login/oauth/access_token',
@@ -44,9 +52,22 @@ async function fetchAccessToken(
           code,
         }),
       }
-    ).then((res) => res.json());
+    );
 
-    const loginResponse = decapCMSLoginScript(response.access_token);
+    const data: any = await response.json();
+
+    if (!data.access_token) {
+      console.error('GitHub OAuth error:', data);
+
+      return new Response(
+        `GitHub OAuth error: ${data.error_description || data.error || 'Unknown error'}`,
+        {
+          status: 500,
+        }
+      );
+    }
+
+    const loginResponse = decapCMSLoginScript(data.access_token);
 
     return new Response(loginResponse, {
       status: 201,
@@ -56,7 +77,8 @@ async function fetchAccessToken(
     });
   } catch (err: any) {
     console.error(err);
-    return new Response(err.message, {
+
+    return new Response(err?.message || 'Internal server error', {
       status: 500,
     });
   }
@@ -64,7 +86,7 @@ async function fetchAccessToken(
 
 function redirectToAuthFlow(env: Env): Response {
   return Response.redirect(
-    `https://github.com/login/oauth/authorize?client_id=${env.CLIENT_ID}&scope=repo,user`,
+    `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(env.CLIENT_ID)}&scope=repo,user`,
     302
   );
 }
